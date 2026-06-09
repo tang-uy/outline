@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hero Section — Pixel Reveal</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      overflow: hidden;
+      height: 100vh;
+      font-family: system-ui, sans-serif;
+    }
+
+    /* ── Layers ── */
+    #bg-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background: #151312;
+      background-size: cover;
+      background-position: center;
+    }
+
+    #canvasContainer {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+    }
+
+    #canvasContainer img {
+      visibility: hidden;
+      pointer-events: none;
+      position: absolute;
+    }
+
+    /* ── UI ── */
+    #ui {
+      position: fixed;
+      top: 1.5rem;
+      right: 1.5rem;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      align-items: flex-end;
+    }
+
+    button.ui-btn {
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.25);
+      color: #fff;
+      padding: 0.45rem 0.9rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      backdrop-filter: blur(8px);
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    button.ui-btn:hover { background: rgba(255,255,255,0.22); }
+
+    input[type=file] { display: none; }
+
+    #settings-panel {
+      background: rgba(10,10,10,0.75);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px;
+      padding: 1rem;
+      backdrop-filter: blur(14px);
+      width: 240px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      color: #fff;
+    }
+
+    .panel-section-title {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      opacity: 0.4;
+      margin-top: 0.25rem;
+    }
+
+    .setting-row { display: flex; flex-direction: column; gap: 0.2rem; }
+
+    .setting-row label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.78rem;
+      opacity: 0.85;
+    }
+
+    .setting-row input[type=range] {
+      width: 100%;
+      accent-color: #bf8b5b;
+      cursor: pointer;
+    }
+
+    .row-buttons {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .color-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-size: 0.78rem;
+      opacity: 0.85;
+    }
+    .color-row input[type=color] {
+      width: 36px;
+      height: 24px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      padding: 0;
+      background: none;
+    }
+
+    #save-btn {
+      background: #bf8b5b;
+      border: none;
+      color: #fff;
+      padding: 0.45rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: opacity 0.2s;
+      width: 100%;
+      margin-top: 0.25rem;
+    }
+    #save-btn:hover { opacity: 0.82; }
+
+    hr { border: none; border-top: 1px solid rgba(255,255,255,0.08); }
+
+    .saved-flash {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      background: #bf8b5b;
+      color: #fff;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+      z-index: 200;
+    }
+    .saved-flash.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<!-- Fond (couleur ou image) -->
+<div id="bg-layer"></div>
+
+<!-- Canvas WebGL transparent avec le PNG par dessus -->
+<div id="canvasContainer">
+  <img id="heroImg" src="img/hero-png.png" crossorigin="anonymous" alt="">
+</div>
+
+<div id="ui">
+  <button class="ui-btn" id="toggle-panel">⚙ Réglages</button>
+
+  <div id="settings-panel">
+
+    <!-- Background -->
+    <div class="panel-section-title">Background</div>
+
+    <div class="color-row">
+      <input type="color" id="bg-color" value="#151312">
+      <span>Couleur de fond</span>
+    </div>
+
+    <div class="row-buttons">
+      <button class="ui-btn" id="upload-bg-btn" style="flex:1;text-align:center;">🖼 Image de fond</button>
+      <button class="ui-btn" id="clear-bg-btn" style="flex:1;text-align:center;">✕ Retirer</button>
+    </div>
+    <input type="file" id="file-bg" accept="image/*">
+
+    <hr>
+
+    <!-- PNG distordu -->
+    <div class="panel-section-title">PNG (effet distorsion)</div>
+
+    <button class="ui-btn" id="upload-png-btn" style="text-align:center;">📁 Changer le PNG</button>
+    <input type="file" id="file-png" accept="image/png,image/*">
+
+    <hr>
+
+    <!-- Distortion -->
+    <div class="panel-section-title">Distortion</div>
+
+    <div class="setting-row">
+      <label>Grid <span id="val-grid">16</span></label>
+      <input type="range" id="s-grid" min="2" max="200" step="1" value="16">
+    </div>
+    <div class="setting-row">
+      <label>Mouse radius <span id="val-mouse">0.2</span></label>
+      <input type="range" id="s-mouse" min="0" max="1" step="0.01" value="0.2">
+    </div>
+    <div class="setting-row">
+      <label>Strength <span id="val-strength">0.2</span></label>
+      <input type="range" id="s-strength" min="0" max="1" step="0.01" value="0.2">
+    </div>
+    <div class="setting-row">
+      <label>Relaxation <span id="val-relaxation">0.6</span></label>
+      <input type="range" id="s-relaxation" min="0" max="1" step="0.01" value="0.6">
+    </div>
+
+    <hr>
+
+    <!-- Révélation -->
+    <div class="panel-section-title">Révélation</div>
+
+    <div class="setting-row">
+      <label>Durée <span id="val-revealDuration">1000</span>ms</label>
+      <input type="range" id="s-revealDuration" min="500" max="8000" step="100" value="1000">
+    </div>
+    <button class="ui-btn" id="replay-btn" style="text-align:center;width:100%;">↺ Rejouer l'animation</button>
+
+    <hr>
+
+    <!-- Glitch -->
+    <div class="panel-section-title">Glitch</div>
+
+    <div class="setting-row">
+      <label>Nombre de cases <span id="val-glitch">0.5</span></label>
+      <input type="range" id="s-glitch" min="0" max="1" step="0.01" value="0.5">
+    </div>
+    <div class="setting-row">
+      <label>Vitesse <span id="val-glitchSpeed">400</span>ms</label>
+      <input type="range" id="s-glitchSpeed" min="50" max="3000" step="50" value="400">
+    </div>
+
+    <button id="save-btn">Sauvegarder les réglages</button>
+  </div>
+</div>
+
+<div class="saved-flash" id="flash">Réglages sauvegardés ✓</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+const STORAGE_KEY = 'hero-distortion-v2';
+
+const vertexShader = `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+// glitch flag dans canal bleu de la dataTexture
+// si b > 0.5 → case transparente (révèle le fond)
+const fragmentShader = `
+  uniform sampler2D uDataTexture;
+  uniform sampler2D uTexture;
+  uniform vec4 resolution;
+  varying vec2 vUv;
+  void main() {
+    vec2 newUV = (vUv - vec2(0.5)) * resolution.zw + vec2(0.5);
+    vec4 offset = texture2D(uDataTexture, vUv);
+    if (offset.b > 0.5) {
+      gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0); // transparent → laisse voir le fond
+    } else {
+      gl_FragColor = texture2D(uTexture, newUV - 0.02 * offset.rg);
+    }
+  }
+`;
+
+function clamp(n, min, max) { return Math.max(min, Math.min(n, max)); }
+
+const DEFAULTS = {
+  grid: 16, mouse: 0.2, strength: 0.2, relaxation: 0.6,
+  glitch: 0.5, glitchSpeed: 400,
+  revealDuration: 1000,
+  bgColor: '#151312'
+};
+
+function loadSettings() {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (s && typeof s.grid === 'number') return Object.assign({}, DEFAULTS, s);
+  } catch (_) {}
+  return { ...DEFAULTS };
+}
+
+class Sketch {
+  constructor(container) {
+    this.container = container;
+    this.img = container.querySelector('img');
+    this.width = container.offsetWidth;
+    this.height = container.offsetHeight;
+    this.mouse = { x: 0.5, y: 0.5, prevX: 0.5, prevY: 0.5, vX: 0, vY: 0 };
+    this.isPlaying = true;
+    this.settings = loadSettings();
+    this.imageAspect = 1;
+    this.glitchSlots = [];
+    this.revealing = true;
+    this.revealStartTime = performance.now();
+    this.revealOrder = [];
+
+    // alpha:true pour transparence du canvas
+    this.renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setSize(this.width, this.height);
+    this.renderer.setClearColor(0x000000, 0); // fond transparent
+    container.appendChild(this.renderer.domElement);
+
+    this.camera = new THREE.OrthographicCamera(-0.5, 0.5, 0.5, -0.5, -1000, 1000);
+    this.camera.position.set(0, 0, 2);
+    this.scene = new THREE.Scene();
+    this.time = 0;
+
+    this.addObjects();
+    this.loadImageTexture(this.img.src);
+    this.resize();
+
+    window.addEventListener('mousemove', e => {
+      this.mouse.x = e.clientX / this.width;
+      this.mouse.y = e.clientY / this.height;
+      this.mouse.vX = this.mouse.x - this.mouse.prevX;
+      this.mouse.vY = this.mouse.y - this.mouse.prevY;
+      this.mouse.prevX = this.mouse.x;
+      this.mouse.prevY = this.mouse.y;
+    });
+
+    window.addEventListener('resize', this.resize.bind(this));
+    this.render();
+  }
+
+  regenerateGrid() {
+    this.size = Math.round(this.settings.grid);
+    const count = this.size * this.size;
+    const data = new Float32Array(4 * count);
+    for (let i = 0; i < count; i++) {
+      data[i * 4]     = (Math.random() * 2 - 1) * 125;
+      data[i * 4 + 1] = (Math.random() * 2 - 1) * 125;
+      data[i * 4 + 2] = 0;
+      data[i * 4 + 3] = 1;
+    }
+    this.dataTexture = new THREE.DataTexture(data, this.size, this.size, THREE.RGBAFormat, THREE.FloatType);
+    this.dataTexture.magFilter = THREE.NearestFilter;
+    this.dataTexture.minFilter = THREE.NearestFilter;
+    this.dataTexture.needsUpdate = true;
+    this.glitchSlots = [];
+
+    // reveal top→bottom with random jitter per cell
+    // j=size-1 = top of screen (UV v=1), j=0 = bottom (UV v=0)
+    const jitter = this.size * 0.6; // spread aléatoire entre lignes
+    const order = [];
+    for (let j = 0; j < this.size; j++) {
+      for (let i = 0; i < this.size; i++) {
+        order.push({
+          idx:     4 * (i + this.size * j),
+          sortKey: (this.size - 1 - j) + Math.random() * jitter,
+        });
+      }
+    }
+    order.sort((a, b) => a.sortKey - b.sortKey);
+    this.revealOrder = order.map(o => o.idx);
+
+    if (this.material) this.material.uniforms.uDataTexture.value = this.dataTexture;
+  }
+
+  startReveal() {
+    this.revealing = true;
+    this.revealStartTime = performance.now();
+    this.regenerateGrid();
+  }
+
+  addObjects() {
+    this.regenerateGrid();
+    this.material = new THREE.ShaderMaterial({
+      side: THREE.DoubleSide,
+      transparent: true,
+      uniforms: {
+        time:         { value: 0 },
+        resolution:   { value: new THREE.Vector4(1, 1, 1, 1) },
+        uTexture:     { value: new THREE.Texture() },
+        uDataTexture: { value: this.dataTexture },
+      },
+      vertexShader,
+      fragmentShader,
+    });
+    this.plane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), this.material);
+    this.scene.add(this.plane);
+  }
+
+  loadImageTexture(src) {
+    new THREE.TextureLoader().load(src, tex => {
+      this.imageAspect = tex.image.height / tex.image.width;
+      this.material.uniforms.uTexture.value = tex;
+      this.resize();
+    });
+  }
+
+  resize() {
+    this.width  = this.container.offsetWidth;
+    this.height = this.container.offsetHeight;
+    this.renderer.setSize(this.width, this.height);
+
+    let a1, a2;
+    if (this.height / this.width > this.imageAspect) {
+      a1 = (this.width / this.height) * this.imageAspect;
+      a2 = 1;
+    } else {
+      a1 = 1;
+      a2 = (this.height / this.width) / this.imageAspect;
+    }
+
+    this.material.uniforms.resolution.value.set(this.width, this.height, a1, a2);
+    this.camera.updateProjectionMatrix();
+    this.regenerateGrid();
+  }
+
+  updateDataTexture() {
+    const data = this.dataTexture.image.data;
+
+    for (let i = 0; i < data.length; i += 4) {
+      data[i]     *= this.settings.relaxation;
+      data[i + 1] *= this.settings.relaxation;
+      data[i + 2]  = 0;
+    }
+
+    // ── Reveal phase ──────────────────────────────────────────
+    if (this.revealing) {
+      const elapsed  = performance.now() - this.revealStartTime;
+      // ease-out: fast start, slow finish
+      const t        = Math.min(elapsed / this.settings.revealDuration, 1);
+      const eased    = 1 - (1 - t) * (1 - t);
+      const revealed = Math.floor(eased * this.revealOrder.length);
+
+      // all cells hidden by default this frame
+      for (let i = 0; i < data.length; i += 4) data[i + 2] = 1;
+      // reveal cells in shuffled order up to current progress
+      for (let k = 0; k < revealed; k++) data[this.revealOrder[k] + 2] = 0;
+
+      if (t >= 1) this.revealing = false;
+    }
+    // ──────────────────────────────────────────────────────────
+
+    const gridMouseX = this.size * this.mouse.x;
+    const gridMouseY = this.size * (1 - this.mouse.y);
+    const maxDist    = this.size * this.settings.mouse;
+    const aspect     = this.height / this.width;
+
+    const inRadius = [];
+    for (let i = 0; i < this.size; i++) {
+      for (let j = 0; j < this.size; j++) {
+        const dist = ((gridMouseX - i) ** 2) / aspect + (gridMouseY - j) ** 2;
+        if (dist < maxDist ** 2) {
+          const idx   = 4 * (i + this.size * j);
+          const power = clamp(maxDist / Math.sqrt(dist), 0, 10);
+          data[idx]     += this.settings.strength * 100 * this.mouse.vX * power;
+          data[idx + 1] -= this.settings.strength * 100 * this.mouse.vY * power;
+          inRadius.push(idx);
+        }
+      }
+    }
+
+    if (this.revealing) {
+      this.mouse.vX *= 0.9;
+      this.mouse.vY *= 0.9;
+      this.dataTexture.needsUpdate = true;
+      return;
+    }
+
+    const now         = performance.now();
+    const glitchCount = Math.round(this.settings.glitch * 6);
+
+    while (this.glitchSlots.length < glitchCount) this.glitchSlots.push({ idx: -1, nextChange: 0 });
+    this.glitchSlots.length = glitchCount;
+
+    for (const slot of this.glitchSlots) {
+      if (now >= slot.nextChange) {
+        slot.idx = inRadius.length > 0
+          ? inRadius[Math.floor(Math.random() * inRadius.length)]
+          : -1;
+        const v = this.settings.glitchSpeed * 0.4;
+        slot.nextChange = now + this.settings.glitchSpeed + (Math.random() * 2 - 1) * v;
+      }
+      if (slot.idx >= 0 && inRadius.includes(slot.idx)) {
+        data[slot.idx]     = 0;
+        data[slot.idx + 1] = 0;
+        data[slot.idx + 2] = 1; // flag → transparent dans le shader
+      }
+    }
+
+    this.mouse.vX *= 0.9;
+    this.mouse.vY *= 0.9;
+    this.dataTexture.needsUpdate = true;
+  }
+
+  render() {
+    if (!this.isPlaying) return;
+    this.time += 0.05;
+    this.updateDataTexture();
+    this.material.uniforms.time.value = this.time;
+    requestAnimationFrame(this.render.bind(this));
+    this.renderer.render(this.scene, this.camera);
+  }
+}
+
+/* ── Init ── */
+const sketch = new Sketch(document.getElementById('canvasContainer'));
+const bgLayer = document.getElementById('bg-layer');
+
+// Appliquer le fond par défaut
+bgLayer.style.backgroundImage = "url('img/hero-bg.png')";
+bgLayer.style.backgroundSize = 'cover';
+bgLayer.style.backgroundPosition = 'center';
+
+/* ── Background color picker ── */
+const bgColorInput = document.getElementById('bg-color');
+bgColorInput.value = sketch.settings.bgColor;
+bgColorInput.addEventListener('input', () => {
+  bgLayer.style.backgroundImage = 'none';
+  bgLayer.style.backgroundColor = bgColorInput.value;
+  sketch.settings.bgColor = bgColorInput.value;
+});
+
+/* ── Background image upload ── */
+document.getElementById('upload-bg-btn').addEventListener('click', () => document.getElementById('file-bg').click());
+document.getElementById('file-bg').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  bgLayer.style.backgroundImage = `url(${URL.createObjectURL(file)})`;
+  bgLayer.style.backgroundSize = 'cover';
+  bgLayer.style.backgroundPosition = 'center';
+  e.target.value = '';
+});
+
+document.getElementById('clear-bg-btn').addEventListener('click', () => {
+  bgLayer.style.backgroundImage = 'none';
+  bgLayer.style.backgroundColor = bgColorInput.value;
+});
+
+/* ── PNG upload ── */
+document.getElementById('upload-png-btn').addEventListener('click', () => document.getElementById('file-png').click());
+document.getElementById('file-png').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  sketch.loadImageTexture(URL.createObjectURL(file));
+  e.target.value = '';
+});
+
+/* ── Sliders ── */
+const sliderDefs = [
+  { key: 'grid',        id: 's-grid',        valId: 'val-grid'        },
+  { key: 'mouse',       id: 's-mouse',       valId: 'val-mouse'       },
+  { key: 'strength',    id: 's-strength',    valId: 'val-strength'    },
+  { key: 'relaxation',  id: 's-relaxation',  valId: 'val-relaxation'  },
+  { key: 'glitch',         id: 's-glitch',         valId: 'val-glitch'         },
+  { key: 'glitchSpeed',    id: 's-glitchSpeed',    valId: 'val-glitchSpeed'    },
+  { key: 'revealDuration', id: 's-revealDuration', valId: 'val-revealDuration' },
+];
+
+sliderDefs.forEach(({ key, id, valId }) => {
+  const el  = document.getElementById(id);
+  const val = document.getElementById(valId);
+  el.value = sketch.settings[key];
+  val.textContent = sketch.settings[key];
+  el.addEventListener('input', () => {
+    const v = parseFloat(el.value);
+    val.textContent = v;
+    sketch.settings[key] = v;
+    if (key === 'grid') sketch.regenerateGrid();
+  });
+});
+
+/* ── Replay ── */
+document.getElementById('replay-btn').addEventListener('click', () => sketch.startReveal());
+
+/* ── Save ── */
+document.getElementById('save-btn').addEventListener('click', () => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(sketch.settings));
+  const flash = document.getElementById('flash');
+  flash.classList.add('show');
+  setTimeout(() => flash.classList.remove('show'), 1800);
+});
+
+/* ── Toggle panel ── */
+const panel = document.getElementById('settings-panel');
+document.getElementById('toggle-panel').addEventListener('click', () => {
+  panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+});
+</script>
+</body>
+</html>
