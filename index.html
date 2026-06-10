@@ -137,6 +137,29 @@
 
     hr { border: none; border-top: 1px solid rgba(255,255,255,0.08); }
 
+    .ratio-btns {
+      display: flex;
+      gap: 0.4rem;
+      margin-top: 0.2rem;
+    }
+    .ratio-btn {
+      flex: 1;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: rgba(255,255,255,0.6);
+      padding: 0.35rem 0;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.78rem;
+      transition: all 0.15s;
+    }
+    .ratio-btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+    .ratio-btn.active {
+      background: #bf8b5b;
+      border-color: #bf8b5b;
+      color: #fff;
+    }
+
     .saved-flash {
       position: fixed;
       bottom: 1.5rem;
@@ -197,8 +220,17 @@
     <div class="panel-section-title">Distortion</div>
 
     <div class="setting-row">
-      <label>Grid <span id="val-grid">16</span></label>
-      <input type="range" id="s-grid" min="2" max="200" step="1" value="16">
+      <label>Forme des cases</label>
+      <div class="ratio-btns">
+        <button class="ratio-btn" data-ratio="1">▪ 1:1</button>
+        <button class="ratio-btn active" data-ratio="2">▬ 2:1</button>
+        <button class="ratio-btn" data-ratio="3">━ 3:1</button>
+      </div>
+    </div>
+
+    <div class="setting-row">
+      <label>Grid <span id="val-grid">12</span></label>
+      <input type="range" id="s-grid" min="2" max="200" step="1" value="12">
     </div>
     <div class="setting-row">
       <label>Mouse radius <span id="val-mouse">0.2</span></label>
@@ -230,12 +262,12 @@
     <div class="panel-section-title">Glitch</div>
 
     <div class="setting-row">
-      <label>Nombre de cases <span id="val-glitch">0.5</span></label>
-      <input type="range" id="s-glitch" min="0" max="1" step="0.01" value="0.5">
+      <label>Nombre de cases <span id="val-glitch">1</span></label>
+      <input type="range" id="s-glitch" min="0" max="5" step="0.1" value="1">
     </div>
     <div class="setting-row">
-      <label>Vitesse <span id="val-glitchSpeed">400</span>ms</label>
-      <input type="range" id="s-glitchSpeed" min="50" max="3000" step="50" value="400">
+      <label>Vitesse <span id="val-glitchSpeed">350</span>ms</label>
+      <input type="range" id="s-glitchSpeed" min="50" max="3000" step="50" value="350">
     </div>
 
     <button id="save-btn">Sauvegarder les réglages</button>
@@ -286,9 +318,10 @@ const fragmentShader = `
 function clamp(n, min, max) { return Math.max(min, Math.min(n, max)); }
 
 const DEFAULTS = {
-  grid: 16, mouse: 0.2, strength: 0.2, relaxation: 0.6,
-  glitch: 0.5, glitchSpeed: 400,
+  grid: 12, mouse: 0.2, strength: 0.2, relaxation: 0.6,
+  glitch: 1.0, glitchSpeed: 350,
   revealDuration: 1000,
+  cellAspect: 2,
   bgColor: '#151312'
 };
 
@@ -345,8 +378,10 @@ class Sketch {
   }
 
   regenerateGrid() {
-    this.size = Math.round(this.settings.grid);
-    const count = this.size * this.size;
+    this.gridW = Math.round(this.settings.grid);
+    // compense le ratio de la fenêtre pour que les cellules aient le bon ratio visuel
+    this.gridH = Math.max(1, Math.round(this.gridW * (this.height / this.width) * this.settings.cellAspect));
+    const count = this.gridW * this.gridH;
     const data = new Float32Array(4 * count);
     for (let i = 0; i < count; i++) {
       data[i * 4]     = (Math.random() * 2 - 1) * 125;
@@ -354,21 +389,20 @@ class Sketch {
       data[i * 4 + 2] = 0;
       data[i * 4 + 3] = 1;
     }
-    this.dataTexture = new THREE.DataTexture(data, this.size, this.size, THREE.RGBAFormat, THREE.FloatType);
+    this.dataTexture = new THREE.DataTexture(data, this.gridW, this.gridH, THREE.RGBAFormat, THREE.FloatType);
     this.dataTexture.magFilter = THREE.NearestFilter;
     this.dataTexture.minFilter = THREE.NearestFilter;
     this.dataTexture.needsUpdate = true;
     this.glitchSlots = [];
 
-    // reveal top→bottom with random jitter per cell
-    // j=size-1 = top of screen (UV v=1), j=0 = bottom (UV v=0)
-    const jitter = this.size * 0.6; // spread aléatoire entre lignes
+    // reveal top→bottom avec jitter
+    const jitter = this.gridH * 0.6;
     const order = [];
-    for (let j = 0; j < this.size; j++) {
-      for (let i = 0; i < this.size; i++) {
+    for (let j = 0; j < this.gridH; j++) {
+      for (let i = 0; i < this.gridW; i++) {
         order.push({
-          idx:     4 * (i + this.size * j),
-          sortKey: (this.size - 1 - j) + Math.random() * jitter,
+          idx:     4 * (i + this.gridW * j),
+          sortKey: (this.gridH - 1 - j) + Math.random() * jitter,
         });
       }
     }
@@ -455,17 +489,17 @@ class Sketch {
     }
     // ──────────────────────────────────────────────────────────
 
-    const gridMouseX = this.size * this.mouse.x;
-    const gridMouseY = this.size * (1 - this.mouse.y);
-    const maxDist    = this.size * this.settings.mouse;
-    const aspect     = this.height / this.width;
+    const gridMouseX = this.gridW * this.mouse.x;
+    const gridMouseY = this.gridH * (1 - this.mouse.y);
+    const maxDist    = this.gridW * this.settings.mouse;
+    const aspect     = (this.height / this.width) * (this.gridW / this.gridH);
 
     const inRadius = [];
-    for (let i = 0; i < this.size; i++) {
-      for (let j = 0; j < this.size; j++) {
+    for (let i = 0; i < this.gridW; i++) {
+      for (let j = 0; j < this.gridH; j++) {
         const dist = ((gridMouseX - i) ** 2) / aspect + (gridMouseY - j) ** 2;
         if (dist < maxDist ** 2) {
-          const idx   = 4 * (i + this.size * j);
+          const idx   = 4 * (i + this.gridW * j);
           const power = clamp(maxDist / Math.sqrt(dist), 0, 10);
           data[idx]     += this.settings.strength * 100 * this.mouse.vX * power;
           data[idx + 1] -= this.settings.strength * 100 * this.mouse.vY * power;
@@ -482,7 +516,7 @@ class Sketch {
     }
 
     const now         = performance.now();
-    const glitchCount = Math.round(this.settings.glitch * 6);
+    const glitchCount = Math.round(this.settings.glitch * 10);
 
     while (this.glitchSlots.length < glitchCount) this.glitchSlots.push({ idx: -1, nextChange: 0 });
     this.glitchSlots.length = glitchCount;
@@ -581,6 +615,19 @@ sliderDefs.forEach(({ key, id, valId }) => {
     val.textContent = v;
     sketch.settings[key] = v;
     if (key === 'grid') sketch.regenerateGrid();
+  });
+});
+
+/* ── Ratio buttons ── */
+document.querySelectorAll('.ratio-btn').forEach(btn => {
+  if (parseInt(btn.dataset.ratio) === sketch.settings.cellAspect) btn.classList.add('active');
+  else btn.classList.remove('active');
+
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.ratio-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    sketch.settings.cellAspect = parseInt(btn.dataset.ratio);
+    sketch.regenerateGrid();
   });
 });
 
